@@ -1,0 +1,20 @@
+{
+  "name": "redis-battle-demo",
+  "version": "1.0.0",
+  "description": "Reference implementation: Socket.io multi-instance coordination via Redis Adapter + Redlock",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js"
+  },
+  "keywords": ["redis", "socket.io", "redlock", "distributed-systems"],
+  "author": "Shailesh Chaudhari",
+  "license": "MIT",
+  "dependencies": {
+    "@socket.io/redis-adapter": "^8.3.0",
+    "express": "^5.2.1",
+    "ioredis": "^5.10.1",
+    "redlock": "^5.0.0-beta.2",
+    "socket.io": "^4.8.3"
+  }
+}

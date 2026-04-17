@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Redis Battle Demo</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, sans-serif; background: #0f0f0f; color: #e0e0e0; padding: 24px; }
+    h1 { font-size: 1.4rem; margin-bottom: 4px; }
+    .subtitle { color: #888; font-size: 0.85rem; margin-bottom: 24px; }
+
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; max-width: 800px; }
+
+    .card { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 8px; padding: 16px; }
+    .card h2 { font-size: 1rem; color: #aaa; margin-bottom: 12px; }
+
+    .score-bar { display: flex; height: 28px; border-radius: 4px; overflow: hidden; margin-bottom: 8px; }
+    .score-red { background: #c0392b; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: 600; transition: width 0.3s; }
+    .score-blue { background: #2980b9; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: 600; transition: width 0.3s; }
+
+    .btns { display: flex; gap: 8px; margin-top: 10px; }
+    button { padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85rem; font-weight: 600; }
+    .btn-red { background: #c0392b; color: #fff; }
+    .btn-blue { background: #2980b9; color: #fff; }
+    .btn-join { background: #27ae60; color: #fff; }
+
+    input { background: #111; border: 1px solid #333; color: #eee; padding: 6px 10px; border-radius: 4px; font-size: 0.85rem; width: 100%; margin-bottom: 8px; }
+
+    .log { font-size: 0.75rem; color: #666; height: 180px; overflow-y: auto; display: flex; flex-direction: column-reverse; }
+    .log-entry { padding: 2px 0; border-bottom: 1px solid #1e1e1e; }
+    .log-entry.tick { color: #8e44ad; }
+    .log-entry.score { color: #27ae60; }
+    .log-entry.room { color: #f39c12; }
+
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.7rem; font-weight: 600; margin-left: 6px; }
+    .pill-online { background: #1e3a2e; color: #2ecc71; }
+
+    #server-id { color: #8e44ad; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <h1>Redis Battle Demo</h1>
+  <p class="subtitle">
+    Connected to: <span id="server-id">connecting…</span>
+    <span class="pill pill-online" id="status-pill">●  online</span>
+  </p>
+
+  <div class="grid">
+    <div class="card">
+      <h2>Battle Room</h2>
+      <input id="room-id" value="room-1" placeholder="Room ID" />
+      <button class="btn-join" onclick="joinRoom()">Join Room</button>
+
+      <p style="font-size:0.75rem; color:#888; margin-top:12px; margin-bottom:4px;">
+        Players: <span id="player-count">—</span>
+      </p>
+
+      <div class="score-bar" id="score-bar">
+        <div class="score-red" id="bar-red" style="width:50%">0</div>
+        <div class="score-blue" id="bar-blue" style="width:50%">0</div>
+      </div>
+
+      <div class="btns">
+        <button class="btn-red" onclick="attack('red')">⚔ Red +10</button>
+        <button class="btn-blue" onclick="attack('blue')">⚔ Blue +10</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Event Log</h2>
+      <div class="log" id="log"></div>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+    let currentRoom = null;
+
+    socket.on("connect", () => {
+      document.getElementById("server-id").textContent = socket.id;
+      log("Connected: " + socket.id, "");
+    });
+
+    socket.on("server_tick", ({ at, by }) => {
+      log(`⏱ tick by ${by} at ${new Date(at).toLocaleTimeString()}`, "tick");
+    });
+
+    socket.on("room_update", ({ roomId, playerCount, score, handledBy }) => {
+      document.getElementById("player-count").textContent = playerCount;
+      updateScoreBar(score);
+      log(`👥 room ${roomId}: ${playerCount} players (handled by ${handledBy})`, "room");
+    });
+
+    socket.on("score_update", ({ score, by, handledBy }) => {
+      updateScoreBar(score);
+      log(`🗡 score red=${score.red} blue=${score.blue} (handled by ${handledBy})`, "score");
+    });
+
+    function joinRoom() {
+      const roomId = document.getElementById("room-id").value.trim() || "room-1";
+      currentRoom = roomId;
+      socket.emit("join_room", roomId);
+      log(`Joining room: ${roomId}`, "");
+    }
+
+    function attack(team) {
+      if (!currentRoom) { log("Join a room first", ""); return; }
+      socket.emit("attack", { roomId: currentRoom, team });
+    }
+
+    function updateScoreBar(score) {
+      const total = score.red + score.blue || 1;
+      const redPct = Math.round((score.red / total) * 100);
+      const bluePct = 100 - redPct;
+      const barRed = document.getElementById("bar-red");
+      const barBlue = document.getElementById("bar-blue");
+      barRed.style.width = redPct + "%";
+      barRed.textContent = score.red;
+      barBlue.style.width = bluePct + "%";
+      barBlue.textContent = score.blue;
+    }
+
+    function log(msg, cls) {
+      const div = document.getElementById("log");
+      const entry = document.createElement("div");
+      entry.className = "log-entry" + (cls ? " " + cls : "");
+      entry.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+      div.prepend(entry);
+      if (div.children.length > 100) div.lastChild.remove();
+    }
+  </script>
+</body>
+</html>
