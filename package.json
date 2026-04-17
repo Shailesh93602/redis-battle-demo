@@ -5,9 +5,16 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "dev": "node --watch src/server.js"
+    "dev": "node --watch src/server.js",
+    "test": "jest",
+    "test:coverage": "jest --coverage"
   },
-  "keywords": ["redis", "socket.io", "redlock", "distributed-systems"],
+  "keywords": [
+    "redis",
+    "socket.io",
+    "redlock",
+    "distributed-systems"
+  ],
   "author": "Shailesh Chaudhari",
   "license": "MIT",
   "dependencies": {
@@ -16,5 +23,9 @@
     "ioredis": "^5.10.1",
     "redlock": "^5.0.0-beta.2",
     "socket.io": "^4.8.3"
+  },
+  "devDependencies": {
+    "jest": "^30.3.0",
+    "socket.io-client": "^4.8.3"
   }
 }
