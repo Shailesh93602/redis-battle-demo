@@ -165,7 +165,7 @@ describe("server module — configuration and startup", () => {
       }),
     }));
     jest.mock("express", () => {
-      const app = { use: jest.fn() };
+      const app = { use: jest.fn(), get: jest.fn() };
       const fn = jest.fn().mockReturnValue(app);
       fn.static = jest.fn().mockReturnValue(() => {});
       return fn;

@@ -27,6 +27,43 @@ const { Server } = require("socket.io");
 const { createClient } = require("ioredis");
 const { createAdapter } = require("@socket.io/redis-adapter");
 const Redlock = require("redlock").default ?? require("redlock");
+const promClient = require("prom-client");
+
+// ─── Metrics ─────────────────────────────────────────────────────────────────
+
+const register = new promClient.Registry();
+promClient.collectDefaultMetrics({ register, prefix: "battle_" });
+
+const connectedClients = new promClient.Gauge({
+  name: "battle_connected_clients",
+  help: "Number of currently connected Socket.io clients",
+  registers: [register],
+});
+
+const activeRooms = new promClient.Gauge({
+  name: "battle_active_rooms",
+  help: "Number of active battle rooms",
+  registers: [register],
+});
+
+const attacksTotal = new promClient.Counter({
+  name: "battle_attacks_total",
+  help: "Total number of attack events processed",
+  labelNames: ["team"],
+  registers: [register],
+});
+
+const ticksAcquired = new promClient.Counter({
+  name: "battle_ticks_acquired_total",
+  help: "Total server ticks where this instance acquired the distributed lock",
+  registers: [register],
+});
+
+const ticksSkipped = new promClient.Counter({
+  name: "battle_ticks_skipped_total",
+  help: "Total server ticks skipped because another instance held the lock",
+  registers: [register],
+});
 
 // ─── Config ─────────────────────────────────────────────────────────────────
 
@@ -74,6 +111,27 @@ io.adapter(createAdapter(pubClient, subClient));
 // Serve the demo UI
 app.use(express.static(path.join(__dirname, "../public")));
 
+// ─── HTTP endpoints ──────────────────────────────────────────────────────────
+
+app.get("/health", (_req, res) => {
+  res.json({
+    status: "ok",
+    instance: INSTANCE_ID,
+    uptime: process.uptime(),
+    activeRooms: rooms.size,
+    connectedClients: io?.engine?.clientsCount ?? 0,
+  });
+});
+
+app.get("/metrics", async (_req, res) => {
+  // Update gauges with live values
+  activeRooms.set(rooms.size);
+  connectedClients.set(io?.engine?.clientsCount ?? 0);
+
+  res.set("Content-Type", register.contentType);
+  res.end(await register.metrics());
+});
+
 // ─── Game state (per-process) ─────────────────────────────────────────────────
 // In a real app this lives in Redis; here we keep it simple.
 
@@ -108,6 +166,8 @@ io.on("connection", (socket) => {
     if (!room) return;
     if (team === "red") room.score.red += 10;
     if (team === "blue") room.score.blue += 10;
+
+    attacksTotal.inc({ team: team ?? "unknown" });
 
     io.to(roomId).emit("score_update", {
       score: room.score,
@@ -144,8 +204,10 @@ async function tryTick() {
   let lock;
   try {
     lock = await redlock.acquire([TICK_LOCK_KEY], LOCK_TTL_MS);
+    ticksAcquired.inc();
   } catch {
     // Another instance holds the lock — this is normal, not an error.
+    ticksSkipped.inc();
     return;
   }
 

@@ -60,17 +60,48 @@ open http://localhost:3002
 | `PORT` | `3001` | HTTP port for this instance |
 | `REDIS_URL` | `redis://localhost:6379` | Redis connection string |
 
+## Running tests
+
+```bash
+# Unit + integration tests (no Redis required — all I/O is mocked or in-process)
+npm test
+
+# With coverage report
+npm run test:coverage
+```
+
+All three test suites run without a live Redis server:
+
+| Suite | What it tests |
+|---|---|
+| `config.test.js` | Module loads correctly, env-var parsing, adapter wiring |
+| `redlock.test.js` | `tryTick` acquires lock → emits `server_tick`; skips when lock held |
+| `socket-events.test.js` | `join_room`, `attack`, `disconnecting` handlers via real in-process Socket.io |
+
 ## Key code sections
 
-### Redis adapter (3 lines)
+### Redis adapter — why two separate clients?
 ```js
 // src/server.js
 const pubClient = createClient(REDIS_URL);
-const subClient = pubClient.duplicate();
+const subClient = pubClient.duplicate();   // <-- must be a separate connection
 io.adapter(createAdapter(pubClient, subClient));
 ```
 
-### Redlock tick (no retry — skip if busy)
+Redis pub/sub requires a dedicated connection for the subscriber: once a client
+issues `SUBSCRIBE` it enters subscriber mode and can no longer send regular
+commands (like `PUBLISH`). The adapter therefore needs **two** connections —
+one that stays in subscriber mode to receive broadcasts, and one that stays
+free to publish and run other commands.
+
+### Redlock — why `retryCount: 0`?
+
+Setting `retryCount: 0` means: if the lock is already held by another instance,
+throw immediately instead of queuing and retrying. The calling instance then
+returns early (`tryTick` catches the error and returns). This is intentional
+for a periodic tick — it is better to **skip** a tick than to pile up queued
+lock attempts that would fire in a burst once the previous lock releases.
+
 ```js
 const redlock = new Redlock([pubClient], { retryCount: 0 });
 
@@ -89,6 +120,23 @@ async function tryTick() {
 }
 setInterval(tryTick, 2000);
 ```
+
+## Metrics & Observability
+
+GET /health  — JSON health check with live room and client counts
+GET /metrics — Prometheus metrics (text/plain; version=0.0.4)
+
+Tracked metrics:
+| Metric | Type | Description |
+|--------|------|-------------|
+| battle_connected_clients | Gauge | Live Socket.io client count |
+| battle_active_rooms | Gauge | Battle rooms with ≥1 player |
+| battle_attacks_total{team} | Counter | Attack events by team |
+| battle_ticks_acquired_total | Counter | Ticks where this instance won the lock |
+| battle_ticks_skipped_total | Counter | Ticks skipped (lock held by another instance) |
+
+These metrics expose the distributed-lock behavior directly: in a two-instance setup,
+ticks_acquired + ticks_skipped across both instances should equal the total tick count.
 
 ## Related
 

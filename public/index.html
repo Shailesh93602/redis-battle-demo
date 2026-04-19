@@ -3,73 +3,335 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Redis Battle Demo</title>
+  <title>Redis Battle Demo — Distributed Lock Visualization</title>
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: system-ui, sans-serif; background: #0f0f0f; color: #e0e0e0; padding: 24px; }
-    h1 { font-size: 1.4rem; margin-bottom: 4px; }
-    .subtitle { color: #888; font-size: 0.85rem; margin-bottom: 24px; }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; max-width: 800px; }
+    :root {
+      --bg: #0a0a0f;
+      --surface: #111118;
+      --surface2: #16161f;
+      --border: #22222e;
+      --text: #e2e2f0;
+      --muted: #6b6b80;
+      --red: #e74c3c;
+      --red-dim: #3d1a18;
+      --blue: #3498db;
+      --blue-dim: #0d2233;
+      --green: #2ecc71;
+      --green-dim: #0d2a1a;
+      --purple: #9b59b6;
+      --purple-dim: #1e1229;
+      --yellow: #fde047;
+      --yellow-dim: #1a1400;
+    }
 
-    .card { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 8px; padding: 16px; }
-    .card h2 { font-size: 1rem; color: #aaa; margin-bottom: 12px; }
+    body {
+      font-family: 'SF Mono', 'Fira Code', ui-monospace, monospace;
+      background: var(--bg);
+      color: var(--text);
+      padding: 24px;
+      max-width: 1100px;
+      margin: 0 auto;
+      font-size: 13px;
+    }
 
-    .score-bar { display: flex; height: 28px; border-radius: 4px; overflow: hidden; margin-bottom: 8px; }
-    .score-red { background: #c0392b; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: 600; transition: width 0.3s; }
-    .score-blue { background: #2980b9; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: 600; transition: width 0.3s; }
+    /* ── Header ── */
+    .header { margin-bottom: 28px; border-bottom: 1px solid var(--border); padding-bottom: 16px; }
+    .header h1 { font-size: 1.25rem; font-weight: 600; letter-spacing: -0.02em; margin-bottom: 4px; }
+    .header h1 span { color: var(--purple); }
+    .header p { color: var(--muted); font-size: 0.8rem; line-height: 1.5; }
+    .badges { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+    .badge {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 3px 10px; border-radius: 3px; font-size: 0.7rem; font-weight: 600;
+      background: var(--surface2); border: 1px solid var(--border); color: var(--muted);
+    }
+    .badge.live { border-color: var(--green-dim); color: var(--green); }
+    .badge.lock { border-color: var(--purple-dim); color: var(--purple); }
+    .badge.redis { border-color: var(--red-dim); color: var(--red); }
 
-    .btns { display: flex; gap: 8px; margin-top: 10px; }
-    button { padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85rem; font-weight: 600; }
-    .btn-red { background: #c0392b; color: #fff; }
-    .btn-blue { background: #2980b9; color: #fff; }
-    .btn-join { background: #27ae60; color: #fff; }
+    /* ── Layout ── */
+    .main-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+    .full-width { grid-column: 1 / -1; }
+    @media (max-width: 680px) {
+      .main-grid { grid-template-columns: 1fr; }
+      .full-width { grid-column: 1; }
+    }
 
-    input { background: #111; border: 1px solid #333; color: #eee; padding: 6px 10px; border-radius: 4px; font-size: 0.85rem; width: 100%; margin-bottom: 8px; }
+    /* ── Card ── */
+    .card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 6px; padding: 16px;
+    }
+    .card-title {
+      font-size: 0.7rem; font-weight: 700; letter-spacing: 0.08em;
+      text-transform: uppercase; color: var(--muted); margin-bottom: 12px;
+    }
 
-    .log { font-size: 0.75rem; color: #666; height: 180px; overflow-y: auto; display: flex; flex-direction: column-reverse; }
-    .log-entry { padding: 2px 0; border-bottom: 1px solid #1e1e1e; }
-    .log-entry.tick { color: #8e44ad; }
-    .log-entry.score { color: #27ae60; }
-    .log-entry.room { color: #f39c12; }
+    /* ── Connection status ── */
+    .conn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .conn-item { background: var(--surface2); border: 1px solid var(--border); border-radius: 4px; padding: 10px; }
+    .conn-item label { display: block; font-size: 0.65rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; }
+    .conn-item .val { display: block; font-size: 0.85rem; font-weight: 600; color: var(--text); word-break: break-all; }
+    .conn-item .val.online { color: var(--green); }
+    .conn-item .val.muted { color: var(--muted); }
 
-    .pill { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.7rem; font-weight: 600; margin-left: 6px; }
-    .pill-online { background: #1e3a2e; color: #2ecc71; }
+    /* ── Lock visualizer ── */
+    .lock-state {
+      display: flex; align-items: center; gap: 10px;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 4px; padding: 12px; margin-bottom: 10px;
+    }
+    .lock-icon { font-size: 1.5rem; width: 36px; text-align: center; flex-shrink: 0; }
+    .lock-info label { font-size: 0.65rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+    .lock-info .val { display: block; font-size: 0.85rem; font-weight: 600; margin-top: 2px; }
+    .lock-info .val.acquired { color: var(--purple); }
+    .lock-info .val.skipped { color: var(--yellow); }
+    .lock-info .val.pending { color: var(--muted); }
 
-    #server-id { color: #8e44ad; font-weight: 600; }
+    .tick-bar { display: flex; gap: 3px; margin-top: 8px; flex-wrap: wrap; }
+    .tick-dot {
+      width: 10px; height: 10px; border-radius: 2px;
+      background: var(--surface2); border: 1px solid var(--border);
+      transition: background 0.2s;
+    }
+    .tick-dot.acquired { background: var(--purple); border-color: var(--purple); }
+    .tick-dot.skipped { background: var(--yellow); border-color: var(--yellow); opacity: 0.6; }
+
+    /* ── Battle room ── */
+    input {
+      background: var(--surface2); border: 1px solid var(--border);
+      color: var(--text); padding: 7px 10px; border-radius: 4px;
+      font-size: 0.8rem; font-family: inherit; width: 100%; margin-bottom: 8px;
+      outline: none;
+    }
+    input:focus { border-color: var(--purple); }
+
+    .btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+    button {
+      padding: 7px 14px; border: none; border-radius: 4px;
+      cursor: pointer; font-size: 0.8rem; font-weight: 600; font-family: inherit;
+      transition: opacity 0.15s, transform 0.1s;
+    }
+    button:active { transform: scale(0.97); }
+    button:hover { opacity: 0.85; }
+    .btn-join { background: var(--green); color: #000; }
+    .btn-red { background: var(--red); color: #fff; }
+    .btn-blue { background: var(--blue); color: #fff; }
+    button:disabled { opacity: 0.35; cursor: not-allowed; }
+
+    .room-info { margin-top: 12px; padding: 10px; background: var(--surface2); border: 1px solid var(--border); border-radius: 4px; }
+    .room-info label { font-size: 0.65rem; color: var(--muted); text-transform: uppercase; display: block; margin-bottom: 4px; }
+
+    .score-bar { display: flex; height: 26px; border-radius: 4px; overflow: hidden; margin-bottom: 6px; }
+    .score-seg {
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.75rem; font-weight: 700; transition: width 0.35s ease;
+    }
+    .score-seg.red { background: var(--red); }
+    .score-seg.blue { background: var(--blue); }
+    .score-seg.empty { background: var(--surface); flex: 1; }
+
+    .score-labels { display: flex; justify-content: space-between; font-size: 0.7rem; color: var(--muted); }
+
+    /* ── Event log ── */
+    .log {
+      height: 200px; overflow-y: auto; display: flex; flex-direction: column;
+      gap: 2px; scroll-behavior: smooth;
+    }
+    .log::-webkit-scrollbar { width: 4px; }
+    .log::-webkit-scrollbar-track { background: transparent; }
+    .log::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    .log-entry {
+      display: flex; gap: 8px; padding: 3px 0;
+      border-bottom: 1px solid var(--border); font-size: 0.72rem;
+      animation: fadeIn 0.2s ease;
+    }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(-2px); } to { opacity: 1; } }
+    .log-time { color: var(--muted); flex-shrink: 0; }
+    .log-icon { flex-shrink: 0; }
+    .log-msg { color: var(--text); word-break: break-word; }
+    .log-msg.tick { color: var(--purple); }
+    .log-msg.score { color: var(--green); }
+    .log-msg.room { color: var(--yellow); }
+    .log-msg.conn { color: var(--blue); }
+    .log-msg.err { color: var(--red); }
+
+    /* ── Architecture explainer ── */
+    .arch-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+    @media (max-width: 680px) { .arch-grid { grid-template-columns: 1fr; } }
+
+    .arch-step { background: var(--surface2); border: 1px solid var(--border); border-radius: 4px; padding: 12px; }
+    .arch-step .step-num {
+      font-size: 0.65rem; font-weight: 700; color: var(--purple);
+      text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 6px;
+    }
+    .arch-step .step-title { font-size: 0.82rem; font-weight: 600; margin-bottom: 6px; }
+    .arch-step .step-body { font-size: 0.72rem; color: var(--muted); line-height: 1.55; }
+    .arch-step code { background: var(--bg); padding: 1px 5px; border-radius: 3px; font-size: 0.68rem; color: var(--text); }
+
+    /* ── Stats bar ── */
+    .stats-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+    .stat-chip {
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 4px; padding: 6px 12px; text-align: center;
+    }
+    .stat-chip .num { font-size: 1.1rem; font-weight: 700; color: var(--text); }
+    .stat-chip .lbl { font-size: 0.62rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+
+    /* misc */
+    .divider { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
+    .tag { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 0.65rem; font-weight: 600; }
+    .tag.won { background: var(--purple-dim); color: var(--purple); }
+    .tag.skipped { background: var(--yellow-dim); color: var(--yellow); }
   </style>
 </head>
 <body>
-  <h1>Redis Battle Demo</h1>
-  <p class="subtitle">
-    Connected to: <span id="server-id">connecting…</span>
-    <span class="pill pill-online" id="status-pill">●  online</span>
-  </p>
 
-  <div class="grid">
+  <div class="header">
+    <h1>Redis Battle Demo <span>— Distributed Lock Visualizer</span></h1>
+    <p>Two architectural patterns from production: <strong>@socket.io/redis-adapter</strong> for cross-instance pub/sub and <strong>Redlock</strong> for distributed mutex (retryCount: 0). Run two instances to watch the lock competition live.</p>
+    <div class="badges">
+      <span class="badge live">● live demo</span>
+      <span class="badge lock">🔒 Redlock mutex</span>
+      <span class="badge redis">Redis adapter</span>
+    </div>
+  </div>
+
+  <!-- Connection + Lock Status -->
+  <div class="main-grid" style="margin-bottom:16px;">
+
     <div class="card">
-      <h2>Battle Room</h2>
-      <input id="room-id" value="room-1" placeholder="Room ID" />
-      <button class="btn-join" onclick="joinRoom()">Join Room</button>
-
-      <p style="font-size:0.75rem; color:#888; margin-top:12px; margin-bottom:4px;">
-        Players: <span id="player-count">—</span>
-      </p>
-
-      <div class="score-bar" id="score-bar">
-        <div class="score-red" id="bar-red" style="width:50%">0</div>
-        <div class="score-blue" id="bar-blue" style="width:50%">0</div>
-      </div>
-
-      <div class="btns">
-        <button class="btn-red" onclick="attack('red')">⚔ Red +10</button>
-        <button class="btn-blue" onclick="attack('blue')">⚔ Blue +10</button>
+      <div class="card-title">Connection</div>
+      <div class="conn-grid">
+        <div class="conn-item">
+          <label id="lbl-socket">Socket ID</label>
+          <span class="val muted" id="socket-id" aria-labelledby="lbl-socket">connecting…</span>
+        </div>
+        <div class="conn-item">
+          <label id="lbl-instance">Server Instance</label>
+          <span class="val muted" id="instance-id" aria-labelledby="lbl-instance">—</span>
+        </div>
+        <div class="conn-item">
+          <label id="lbl-status">Status</label>
+          <span class="val muted" id="conn-status" aria-labelledby="lbl-status">● offline</span>
+        </div>
+        <div class="conn-item">
+          <label id="lbl-room">Room</label>
+          <span class="val muted" id="current-room" aria-labelledby="lbl-room">—</span>
+        </div>
       </div>
     </div>
 
     <div class="card">
-      <h2>Event Log</h2>
+      <div class="card-title">Distributed Lock (server_tick)</div>
+      <div class="lock-state">
+        <div class="lock-icon" id="lock-icon">⏳</div>
+        <div class="lock-info">
+          <label id="lbl-winner">Last tick winner</label>
+          <span class="val pending" id="lock-winner" aria-labelledby="lbl-winner">waiting for first tick…</span>
+          <label id="lbl-tcount" style="margin-top:6px;">Tick count</label>
+          <span class="val pending" id="tick-count" aria-labelledby="lbl-tcount">0 ticks</span>
+        </div>
+      </div>
+      <div class="tick-bar" id="tick-bar" title="Purple = this instance acquired lock, Yellow = another instance won"></div>
+      <div style="font-size:0.65rem; color:var(--muted); margin-top:6px;">
+        <span class="tag won">■</span> lock acquired by this instance &nbsp;
+        <span class="tag skipped">■</span> another instance won
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Battle Room + Log -->
+  <div class="main-grid">
+
+    <div class="card">
+      <div class="card-title">Battle Room</div>
+
+      <input id="room-id" value="room-1" placeholder="Room ID (e.g. room-1)" />
+
+      <div class="btn-row" style="margin-bottom:12px;">
+        <button class="btn-join" onclick="joinRoom()">Join Room</button>
+      </div>
+
+      <div class="room-info" role="region" aria-label="Battle score">
+        <p class="card-title" style="margin-bottom:6px;">Score</p>
+        <div class="score-bar" id="score-bar">
+          <div class="score-seg red" id="bar-red" style="width:0%"></div>
+          <div class="score-seg empty"></div>
+          <div class="score-seg blue" id="bar-blue" style="width:0%"></div>
+        </div>
+        <div class="score-labels">
+          <span>🔴 Red: <strong id="score-red">0</strong></span>
+          <span>Players: <strong id="player-count">—</strong></span>
+          <span>Blue: <strong id="score-blue">0</strong> 🔵</span>
+        </div>
+      </div>
+
+      <hr class="divider" />
+
+      <div class="stats-row">
+        <div class="stat-chip">
+          <div class="num" id="total-attacks">0</div>
+          <div class="lbl">Attacks</div>
+        </div>
+        <div class="stat-chip">
+          <div class="num" id="total-ticks">0</div>
+          <div class="lbl">Ticks seen</div>
+        </div>
+        <div class="stat-chip">
+          <div class="num" id="ticks-won">0</div>
+          <div class="lbl">Ticks won</div>
+        </div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn-red" onclick="attack('red')" id="btn-attack-red">⚔ Attack (Red +10)</button>
+        <button class="btn-blue" onclick="attack('blue')" id="btn-attack-blue">⚔ Attack (Blue +10)</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Event Log</div>
       <div class="log" id="log"></div>
+    </div>
+
+  </div>
+
+  <!-- Architecture explainer -->
+  <div class="card full-width" style="margin-top:16px;">
+    <div class="card-title">How it works</div>
+    <div class="arch-grid">
+      <div class="arch-step">
+        <div class="step-num">Pattern 1</div>
+        <div class="step-title">@socket.io/redis-adapter</div>
+        <div class="step-body">
+          Without an adapter, Socket.io rooms only work within a single process. Two instances can't emit to the same room.<br><br>
+          The Redis adapter uses pub/sub to relay events across instances. Requires two separate clients: one for publish, one for subscribe — a subscribed connection cannot send commands.<br><br>
+          <code>io.adapter(createAdapter(pubClient, subClient))</code>
+        </div>
+      </div>
+      <div class="arch-step">
+        <div class="step-num">Pattern 2</div>
+        <div class="step-title">Redlock (distributed mutex)</div>
+        <div class="step-body">
+          Every 2 seconds all running instances race to acquire <code>battle:tick:lock</code>. One wins; the others skip. Without this, every instance would emit a <code>server_tick</code> — clients would receive N duplicates per interval.<br><br>
+          <code>retryCount: 0</code> is intentional. A delayed tick is worse than a skipped tick in a real-time game context. The loser skips immediately rather than queuing.<br><br>
+          The tick bar above shows which instance won each race.
+        </div>
+      </div>
+      <div class="arch-step">
+        <div class="step-num">Why it matters</div>
+        <div class="step-title">Horizontal scaling</div>
+        <div class="step-body">
+          This is the exact architecture behind EduScale's real-time coding battles. With a single Node.js instance, neither pattern is needed. But any load balancer or auto-scaling group creates these problems.<br><br>
+          Open this demo in two tabs pointing to different ports (<code>:3001</code> and <code>:3002</code>, both backed by the same Redis) to watch the lock flip between instances.<br><br>
+          Source: <code>src/server.js</code> (~200 lines, no frameworks).
+        </div>
+      </div>
     </div>
   </div>
 
@@ -77,59 +339,146 @@
   <script>
     const socket = io();
     let currentRoom = null;
+    let instanceId = null;
+    let tickCount = 0;
+    let ticksWon = 0;
+    let totalAttacks = 0;
+    const MAX_TICK_DOTS = 30;
 
-    socket.on("connect", () => {
-      document.getElementById("server-id").textContent = socket.id;
-      log("Connected: " + socket.id, "");
+    // ─── Connection ──────────────────────────────────────────────────────────
+
+    socket.on('connect', () => {
+      document.getElementById('socket-id').textContent = socket.id;
+      document.getElementById('socket-id').className = 'val online';
+      document.getElementById('conn-status').textContent = '● online';
+      document.getElementById('conn-status').className = 'val online';
+      addLog('conn', '🔌', 'Connected — socket ' + socket.id);
     });
 
-    socket.on("server_tick", ({ at, by }) => {
-      log(`⏱ tick by ${by} at ${new Date(at).toLocaleTimeString()}`, "tick");
+    socket.on('disconnect', () => {
+      document.getElementById('conn-status').textContent = '● offline';
+      document.getElementById('conn-status').className = 'val muted';
+      addLog('err', '⚡', 'Disconnected from server');
     });
 
-    socket.on("room_update", ({ roomId, playerCount, score, handledBy }) => {
-      document.getElementById("player-count").textContent = playerCount;
+    socket.on('connect_error', (err) => {
+      addLog('err', '✗', 'Connection error: ' + err.message);
+    });
+
+    // ─── Tick (distributed lock) ─────────────────────────────────────────────
+
+    socket.on('server_tick', ({ at, by }) => {
+      // server.js emits { at: timestamp, by: INSTANCE_ID }
+      if (!instanceId) {
+        instanceId = by;
+        document.getElementById('instance-id').textContent = by;
+      }
+
+      tickCount++;
+      document.getElementById('total-ticks').textContent = tickCount;
+
+      const wonThisTick = (by === instanceId);
+      const lockWinner = document.getElementById('lock-winner');
+      const lockIcon   = document.getElementById('lock-icon');
+
+      if (wonThisTick) {
+        ticksWon++;
+        document.getElementById('ticks-won').textContent = ticksWon;
+        lockWinner.textContent = by + ' (this instance)';
+        lockWinner.className = 'val acquired';
+        lockIcon.textContent = '🔒';
+      } else {
+        lockWinner.textContent = by;
+        lockWinner.className = 'val skipped';
+        lockIcon.textContent = '⏭';
+      }
+
+      document.getElementById('tick-count').textContent = tickCount + ' tick' + (tickCount === 1 ? '' : 's');
+
+      // Tick bar
+      const bar = document.getElementById('tick-bar');
+      const dot = document.createElement('div');
+      dot.className = 'tick-dot ' + (wonThisTick ? 'acquired' : 'skipped');
+      dot.title = (wonThisTick ? '✓ This instance won' : '↷ ' + by + ' won') + ' at ' + new Date(at).toLocaleTimeString();
+      bar.appendChild(dot);
+      if (bar.children.length > MAX_TICK_DOTS) bar.firstChild.remove();
+
+      addLog('tick', '⏱', `server_tick by ${by} at ${new Date(at).toLocaleTimeString()}${wonThisTick ? ' ← this instance' : ''}`);
+    });
+
+    // ─── Room events ─────────────────────────────────────────────────────────
+
+    socket.on('room_update', ({ roomId, playerCount, score, handledBy }) => {
+      document.getElementById('player-count').textContent = playerCount;
+      document.getElementById('current-room').textContent = roomId;
       updateScoreBar(score);
-      log(`👥 room ${roomId}: ${playerCount} players (handled by ${handledBy})`, "room");
+      addLog('room', '👥', `room ${roomId}: ${playerCount} player${playerCount === 1 ? '' : 's'} | handled by ${handledBy}`);
     });
 
-    socket.on("score_update", ({ score, by, handledBy }) => {
+    socket.on('score_update', ({ score, by, handledBy }) => {
+      totalAttacks++;
+      document.getElementById('total-attacks').textContent = totalAttacks;
       updateScoreBar(score);
-      log(`🗡 score red=${score.red} blue=${score.blue} (handled by ${handledBy})`, "score");
+      addLog('score', '⚔', `+10 ${by} team | red=${score.red} blue=${score.blue} | via ${handledBy}`);
     });
+
+    // ─── Actions ─────────────────────────────────────────────────────────────
 
     function joinRoom() {
-      const roomId = document.getElementById("room-id").value.trim() || "room-1";
+      const roomId = document.getElementById('room-id').value.trim() || 'room-1';
       currentRoom = roomId;
-      socket.emit("join_room", roomId);
-      log(`Joining room: ${roomId}`, "");
+      socket.emit('join_room', roomId);
+      document.getElementById('current-room').textContent = roomId;
+      addLog('conn', '→', 'Joining room: ' + roomId);
     }
 
     function attack(team) {
-      if (!currentRoom) { log("Join a room first", ""); return; }
-      socket.emit("attack", { roomId: currentRoom, team });
+      if (!currentRoom) { addLog('err', '!', 'Join a room first'); return; }
+      socket.emit('attack', { roomId: currentRoom, team });
     }
+
+    // ─── UI helpers ──────────────────────────────────────────────────────────
 
     function updateScoreBar(score) {
-      const total = score.red + score.blue || 1;
-      const redPct = Math.round((score.red / total) * 100);
-      const bluePct = 100 - redPct;
-      const barRed = document.getElementById("bar-red");
-      const barBlue = document.getElementById("bar-blue");
-      barRed.style.width = redPct + "%";
-      barRed.textContent = score.red;
-      barBlue.style.width = bluePct + "%";
-      barBlue.textContent = score.blue;
+      const total = (score.red + score.blue) || 0;
+      document.getElementById('score-red').textContent = score.red;
+      document.getElementById('score-blue').textContent = score.blue;
+
+      const barRed  = document.getElementById('bar-red');
+      const barBlue = document.getElementById('bar-blue');
+
+      if (total === 0) {
+        barRed.style.width  = '0%';
+        barBlue.style.width = '0%';
+      } else {
+        const rPct = Math.round((score.red  / total) * 100);
+        const bPct = Math.round((score.blue / total) * 100);
+        barRed.style.width  = rPct + '%';
+        barBlue.style.width = bPct + '%';
+      }
     }
 
-    function log(msg, cls) {
-      const div = document.getElementById("log");
-      const entry = document.createElement("div");
-      entry.className = "log-entry" + (cls ? " " + cls : "");
-      entry.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
-      div.prepend(entry);
-      if (div.children.length > 100) div.lastChild.remove();
+    function addLog(cls, icon, msg) {
+      const log   = document.getElementById('log');
+      const entry = document.createElement('div');
+      entry.className = 'log-entry';
+      const time  = new Date().toLocaleTimeString('en', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      entry.innerHTML =
+        `<span class="log-time">${time}</span>` +
+        `<span class="log-icon">${icon}</span>` +
+        `<span class="log-msg ${cls}">${escHtml(msg)}</span>`;
+      log.prepend(entry);
+      if (log.children.length > 120) log.lastChild.remove();
     }
+
+    function escHtml(s) {
+      return s.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;');
+    }
+
+    // Allow Enter key on room input
+    document.getElementById('room-id').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') joinRoom();
+    });
   </script>
 </body>
 </html>
