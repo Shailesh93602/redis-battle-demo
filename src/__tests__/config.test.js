@@ -113,7 +113,7 @@ describe("server module — configuration and startup", () => {
     const mockServer = http.createServer.mock.results[0].value;
     expect(mockServer.listen).toHaveBeenCalledWith(
       expect.any(Number),
-      expect.any(Function)
+      expect.any(Function),
     );
   });
 
@@ -132,7 +132,7 @@ describe("server module — configuration and startup", () => {
     const Redlock = require("redlock");
     expect(Redlock).toHaveBeenCalledWith(
       expect.any(Array),
-      expect.objectContaining({ retryCount: 0 })
+      expect.objectContaining({ retryCount: 0 }),
     );
   });
 
@@ -172,7 +172,10 @@ describe("server module — configuration and startup", () => {
     });
     jest.mock("http", () => {
       const srv = {
-        listen: jest.fn((port, cb) => { if (cb) cb(); return srv; }),
+        listen: jest.fn((port, cb) => {
+          if (cb) cb();
+          return srv;
+        }),
         close: jest.fn(),
         address: jest.fn().mockReturnValue({ port: 4242 }),
       };

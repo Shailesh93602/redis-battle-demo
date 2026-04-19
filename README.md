@@ -2,10 +2,10 @@
 
 Reference implementation for two distributed-systems patterns used in [EduScale](https://github.com/Shailesh93602/eduscale):
 
-| Pattern | Library | What it solves |
-|---|---|---|
-| Multi-instance Socket.io | `@socket.io/redis-adapter` | Events emitted on instance A reach clients on instances B, C |
-| Distributed mutex | `redlock` | Only one instance runs a periodic tick — no double processing |
+| Pattern                  | Library                    | What it solves                                                |
+| ------------------------ | -------------------------- | ------------------------------------------------------------- |
+| Multi-instance Socket.io | `@socket.io/redis-adapter` | Events emitted on instance A reach clients on instances B, C  |
+| Distributed mutex        | `redlock`                  | Only one instance runs a periodic tick — no double processing |
 
 ## Architecture
 
@@ -25,11 +25,13 @@ Browser A ──┐                         ┌── Browser C
 ```
 
 **What happens without the Redis adapter:**
+
 - Browser A connects to instance :3001
 - Browser C connects to instance :3002
 - A's attack event is only broadcast to clients on :3001 — C never sees it
 
 **What happens without Redlock:**
+
 - Both :3001 and :3002 fire their `setInterval` tick at ~the same time
 - Both emit `server_tick` → clients get duplicate events, scores double-count
 
@@ -55,10 +57,10 @@ open http://localhost:3002
 
 ## Environment variables
 
-| Variable | Default | Description |
-|---|---|---|
-| `PORT` | `3001` | HTTP port for this instance |
-| `REDIS_URL` | `redis://localhost:6379` | Redis connection string |
+| Variable    | Default                  | Description                 |
+| ----------- | ------------------------ | --------------------------- |
+| `PORT`      | `3001`                   | HTTP port for this instance |
+| `REDIS_URL` | `redis://localhost:6379` | Redis connection string     |
 
 ## Running tests
 
@@ -72,19 +74,20 @@ npm run test:coverage
 
 All three test suites run without a live Redis server:
 
-| Suite | What it tests |
-|---|---|
-| `config.test.js` | Module loads correctly, env-var parsing, adapter wiring |
-| `redlock.test.js` | `tryTick` acquires lock → emits `server_tick`; skips when lock held |
+| Suite                   | What it tests                                                                 |
+| ----------------------- | ----------------------------------------------------------------------------- |
+| `config.test.js`        | Module loads correctly, env-var parsing, adapter wiring                       |
+| `redlock.test.js`       | `tryTick` acquires lock → emits `server_tick`; skips when lock held           |
 | `socket-events.test.js` | `join_room`, `attack`, `disconnecting` handlers via real in-process Socket.io |
 
 ## Key code sections
 
 ### Redis adapter — why two separate clients?
+
 ```js
 // src/server.js
 const pubClient = createClient(REDIS_URL);
-const subClient = pubClient.duplicate();   // <-- must be a separate connection
+const subClient = pubClient.duplicate(); // <-- must be a separate connection
 io.adapter(createAdapter(pubClient, subClient));
 ```
 
@@ -123,7 +126,7 @@ setInterval(tryTick, 2000);
 
 ## Metrics & Observability
 
-GET /health  — JSON health check with live room and client counts
+GET /health — JSON health check with live room and client counts
 GET /metrics — Prometheus metrics (text/plain; version=0.0.4)
 
 Tracked metrics:
@@ -140,6 +143,6 @@ ticks_acquired + ticks_skipped across both instances should equal the total tick
 
 ## Related
 
-- [EduScale architecture blog post](https://shaileshchaudhari.vercel.app/blog/eduscale-distributed-architecture) *(coming soon)*
+- [EduScale architecture blog post](https://shaileshchaudhari.vercel.app/blog/eduscale-distributed-architecture) _(coming soon)_
 - [`@socket.io/redis-adapter` docs](https://socket.io/docs/v4/redis-adapter/)
 - [Redlock algorithm](https://redis.io/docs/manual/patterns/distributed-locks/)

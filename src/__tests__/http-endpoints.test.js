@@ -20,7 +20,10 @@ const promClient = require("prom-client");
 function buildTestApp() {
   // Use an isolated registry per test run so metrics don't bleed between tests.
   const testRegister = new promClient.Registry();
-  promClient.collectDefaultMetrics({ register: testRegister, prefix: "battle_" });
+  promClient.collectDefaultMetrics({
+    register: testRegister,
+    prefix: "battle_",
+  });
 
   const testConnectedClients = new promClient.Gauge({
     name: "battle_connected_clients",
@@ -89,8 +92,12 @@ function get(server, path) {
     const { port } = server.address();
     const req = http.get(`http://127.0.0.1:${port}${path}`, (res) => {
       let body = "";
-      res.on("data", (chunk) => { body += chunk; });
-      res.on("end", () => resolve({ status: res.statusCode, headers: res.headers, body }));
+      res.on("data", (chunk) => {
+        body += chunk;
+      });
+      res.on("end", () =>
+        resolve({ status: res.statusCode, headers: res.headers, body }),
+      );
     });
     req.on("error", reject);
   });
@@ -223,7 +230,10 @@ describe("HTTP endpoints — /health and /metrics", () => {
     });
 
     test("battle_active_rooms gauge reflects current rooms Map size", async () => {
-      rooms.set("room-metrics-test", { players: new Set(), score: { red: 0, blue: 0 } });
+      rooms.set("room-metrics-test", {
+        players: new Set(),
+        score: { red: 0, blue: 0 },
+      });
 
       const { body } = await get(server, "/metrics");
       // Prometheus format: battle_active_rooms 1

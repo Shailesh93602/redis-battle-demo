@@ -103,7 +103,7 @@ describe("Distributed tick logic (tryTick)", () => {
 
   test("does NOT emit server_tick when lock acquisition fails", async () => {
     mockRedlock.acquire.mockRejectedValue(
-      new Error("Lock held by another instance")
+      new Error("Lock held by another instance"),
     );
     await tryTick();
     expect(emittedEvents).toHaveLength(0);
@@ -117,7 +117,7 @@ describe("Distributed tick logic (tryTick)", () => {
 
   test("resolves without throwing when lock acquisition fails", async () => {
     mockRedlock.acquire.mockRejectedValue(
-      new Error("Lock held by another instance")
+      new Error("Lock held by another instance"),
     );
     await expect(tryTick()).resolves.toBeUndefined();
   });
@@ -129,7 +129,7 @@ describe("Distributed tick logic (tryTick)", () => {
     await tryTick();
     expect(mockRedlock.acquire).toHaveBeenCalledWith(
       [TICK_LOCK_KEY],
-      expect.any(Number)
+      expect.any(Number),
     );
   });
 
@@ -171,9 +171,9 @@ describe("Distributed tick logic (tryTick)", () => {
 
   test("alternating lock available/unavailable: only emits on available ticks", async () => {
     mockRedlock.acquire
-      .mockResolvedValueOnce(mockLock)                            // tick 1: lock available
-      .mockRejectedValueOnce(new Error("held"))                   // tick 2: lock held
-      .mockResolvedValueOnce(mockLock);                           // tick 3: lock available
+      .mockResolvedValueOnce(mockLock) // tick 1: lock available
+      .mockRejectedValueOnce(new Error("held")) // tick 2: lock held
+      .mockResolvedValueOnce(mockLock); // tick 3: lock available
 
     await tryTick();
     await tryTick();

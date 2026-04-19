@@ -75,8 +75,8 @@ const INSTANCE_ID = `server:${PORT}`;
 
 // Lock key — all instances race for this every TICK_INTERVAL ms.
 const TICK_LOCK_KEY = "battle:tick:lock";
-const TICK_INTERVAL_MS = 2000;   // how often a tick is attempted
-const LOCK_TTL_MS = 1500;        // lock held for at most this long
+const TICK_INTERVAL_MS = 2000; // how often a tick is attempted
+const LOCK_TTL_MS = 1500; // lock held for at most this long
 
 // ─── Redis clients ───────────────────────────────────────────────────────────
 // Socket.io adapter needs two separate clients: one for pub, one for sub.
@@ -84,13 +84,17 @@ const LOCK_TTL_MS = 1500;        // lock held for at most this long
 const pubClient = createClient(REDIS_URL);
 const subClient = pubClient.duplicate();
 
-pubClient.on("error", (err) => console.error(`[${INSTANCE_ID}] Redis pub error:`, err.message));
-subClient.on("error", (err) => console.error(`[${INSTANCE_ID}] Redis sub error:`, err.message));
+pubClient.on("error", (err) =>
+  console.error(`[${INSTANCE_ID}] Redis pub error:`, err.message),
+);
+subClient.on("error", (err) =>
+  console.error(`[${INSTANCE_ID}] Redis sub error:`, err.message),
+);
 
 // ─── Redlock ─────────────────────────────────────────────────────────────────
 
 const redlock = new Redlock([pubClient], {
-  retryCount: 0,         // don't queue — if another instance has the lock, skip
+  retryCount: 0, // don't queue — if another instance has the lock, skip
   retryDelay: 0,
   driftFactor: 0.01,
 });
@@ -158,7 +162,9 @@ io.on("connection", (socket) => {
       handledBy: INSTANCE_ID,
     });
 
-    console.log(`[${INSTANCE_ID}] ${socket.id} joined room ${roomId} (${room.players.size} players)`);
+    console.log(
+      `[${INSTANCE_ID}] ${socket.id} joined room ${roomId} (${room.players.size} players)`,
+    );
   });
 
   socket.on("attack", ({ roomId, team }) => {

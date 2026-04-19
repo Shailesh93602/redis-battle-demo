@@ -95,7 +95,7 @@ describe("Socket.io event handlers", () => {
           port = httpServer.address().port;
           resolve();
         });
-      })
+      }),
   );
 
   afterAll(
@@ -104,7 +104,7 @@ describe("Socket.io event handlers", () => {
         io.close(() => {
           httpServer.close(resolve);
         });
-      })
+      }),
   );
 
   // Helper to create a connected client
@@ -278,7 +278,9 @@ describe("Socket.io event handlers", () => {
       await waitFor(client, "connect");
 
       let received = false;
-      client.on("score_update", () => { received = true; });
+      client.on("score_update", () => {
+        received = true;
+      });
 
       client.emit("attack", { roomId: "does-not-exist", team: "red" });
 
