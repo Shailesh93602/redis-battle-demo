@@ -13,14 +13,18 @@
       --surface2: #16161f;
       --border: #22222e;
       --text: #e2e2f0;
-      --muted: #6b6b80;
-      --red: #e74c3c;
+      /* Previous --muted #6b6b80 was ~3.5:1 on --bg / ~3.8:1 on --surface2 —
+         failed WCAG AA 4.5:1 on axe (40 violations on the audit run).
+         Lightened to #a8a8c0 (~7:1 on --bg, ~6:1 on --surface2). */
+      --muted: #a8a8c0;
+      /* Slightly lightened accents for AA on semantic text that uses them. */
+      --red: #ff6b5c;
       --red-dim: #3d1a18;
-      --blue: #3498db;
+      --blue: #5dade2;
       --blue-dim: #0d2233;
-      --green: #2ecc71;
+      --green: #5eea96;
       --green-dim: #0d2a1a;
-      --purple: #9b59b6;
+      --purple: #c58df5;
       --purple-dim: #1e1229;
       --yellow: #fde047;
       --yellow-dim: #1a1400;
