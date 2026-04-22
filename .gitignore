@@ -1,2 +1,5 @@
 node_modules/
 .env
+
+# Quality audit artifact — kept local
+quality.md
